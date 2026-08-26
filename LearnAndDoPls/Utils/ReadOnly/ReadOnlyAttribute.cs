@@ -1,3 +1,10 @@
+using System;
 using UnityEngine;
 
-public class ReadOnlyAttribute : PropertyAttribute { }
+namespace CDTU.Utils
+{
+    [AttributeUsage(AttributeTargets.Field)]
+    public sealed class ReadOnlyAttribute : PropertyAttribute
+    {
+    }
+}

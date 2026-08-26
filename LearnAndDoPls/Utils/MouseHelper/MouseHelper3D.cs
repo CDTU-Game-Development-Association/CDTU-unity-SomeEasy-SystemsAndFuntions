@@ -1,85 +1,91 @@
-/*
- * =========================
- *  MouseHelper3D
- *  适用：3D / 斜视角 / 等距视角
- * =========================
- */
 using UnityEngine;
 
-public static class MouseHelper3D
+namespace CDTU.Utils
 {
-    private static Camera Cam =>  Camera.main;
-
     /// <summary>
-    /// 获取鼠标射线
+    /// Builds 3D rays from a caller-provided screen position.
     /// </summary>
-    public static Ray GetMouseRay()
+    public static class MouseHelper3D
     {
-        Vector2 screenPos = UnityEngine.InputSystem.Mouse.current.position.ReadValue();
-        return Cam.ScreenPointToRay(screenPos);
-    }
-
-    /// <summary>
-    /// 射线检测到指定 Layer 的物体
-    /// </summary>
-    public static bool RaycastObject(
-        out RaycastHit hit,
-        float maxDistance = 1000f,
-        LayerMask mask = default
-    )
-    {
-        Ray ray = GetMouseRay();
-        return Physics.Raycast(ray, out hit, maxDistance, mask);
-    }
-
-    /// <summary>
-    /// 射线检测地面（常用于点击移动）
-    /// </summary>
-    public static bool RaycastToGround(
-        out Vector3 hitPoint,
-        float maxDistance = 1000f,
-        LayerMask groundMask = default
-    )
-    {
-        Ray ray = GetMouseRay();
-
-        if (Physics.Raycast(ray, out RaycastHit hit, maxDistance, groundMask))
+        public static bool TryGetRay(Vector2 screenPosition, out Ray ray, Camera camera = null)
         {
-            hitPoint = hit.point;
+            camera = camera != null ? camera : Camera.main;
+            if (camera == null)
+            {
+                ray = default;
+                return false;
+            }
+
+            ray = camera.ScreenPointToRay(screenPosition);
             return true;
         }
 
-        hitPoint = Vector3.zero;
-        return false;
-    }
-
-    /// <summary>
-    /// 射线投射到指定平面（不依赖碰撞体）
-    /// </summary>
-    public static bool RaycastToPlane(
-        Plane plane,
-        out Vector3 hitPoint
-    )
-    {
-        Ray ray = GetMouseRay();
-
-        if (plane.Raycast(ray, out float distance))
+        public static bool RaycastObject(
+            Vector2 screenPosition,
+            out RaycastHit hit,
+            Camera camera = null,
+            float maxDistance = 1000f,
+            int layerMask = Physics.DefaultRaycastLayers,
+            QueryTriggerInteraction triggerInteraction = QueryTriggerInteraction.UseGlobal)
         {
-            hitPoint = ray.GetPoint(distance);
-            return true;
+            if (float.IsNaN(maxDistance) || float.IsInfinity(maxDistance) || maxDistance < 0f)
+                throw new System.ArgumentOutOfRangeException(nameof(maxDistance));
+
+            if (!TryGetRay(screenPosition, out var ray, camera))
+            {
+                hit = default;
+                return false;
+            }
+
+            return Physics.Raycast(ray, out hit, maxDistance, layerMask, triggerInteraction);
         }
 
-        hitPoint = Vector3.zero;
-        return false;
-    }
+        public static bool RaycastToGround(
+            Vector2 screenPosition,
+            out Vector3 hitPoint,
+            Camera camera = null,
+            float maxDistance = 1000f,
+            int groundMask = Physics.DefaultRaycastLayers,
+            QueryTriggerInteraction triggerInteraction = QueryTriggerInteraction.UseGlobal)
+        {
+            if (RaycastObject(
+                    screenPosition,
+                    out var hit,
+                    camera,
+                    maxDistance,
+                    groundMask,
+                    triggerInteraction))
+            {
+                hitPoint = hit.point;
+                return true;
+            }
 
-    /// <summary>
-    /// 从原点指向目标点的方向（忽略 Y）
-    /// </summary>
-    public static Vector3 GetFlatDirection(Vector3 origin, Vector3 target)
-    {
-        Vector3 dir = target - origin;
-        dir.y = 0;
-        return dir.normalized;
+            hitPoint = default;
+            return false;
+        }
+
+        public static bool RaycastToPlane(
+            Vector2 screenPosition,
+            Plane plane,
+            out Vector3 hitPoint,
+            Camera camera = null)
+        {
+            if (TryGetRay(screenPosition, out var ray, camera) &&
+                plane.Raycast(ray, out var distance))
+            {
+                hitPoint = ray.GetPoint(distance);
+                return true;
+            }
+
+            hitPoint = default;
+            return false;
+        }
+
+        public static Vector3 GetFlatDirection(Vector3 origin, Vector3 target)
+        {
+            var direction = target - origin;
+            direction.y = 0f;
+            return direction.normalized;
+        }
     }
 }

@@ -73,3 +73,12 @@ crashlytics-build.properties
 /[Aa]ssets/[Ss]treamingAssets/aa/*
 
 *.meta
+
+# Keep stable Unity asset identities for the maintained Utils package.
+!LearnAndDoPls/Utils/*.meta
+!LearnAndDoPls/Utils/**/*.meta
+!Editor/SOHelper.meta
+!Editor/SOHelper/*.meta
+!Editor/SOHelper/**/*.meta
+
+.DS_Store

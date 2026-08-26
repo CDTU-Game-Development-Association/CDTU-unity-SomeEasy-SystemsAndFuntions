@@ -1,85 +1,77 @@
 using UnityEngine;
-using UnityEngine.InputSystem;
 
-/*
- * =========================
- *  MouseHelper2D
- *  适用：2D / 2.5D / 正交相机
- *  约定：交互平面 Z = 0
- * =========================
- */
-public static class MouseHelper2D
+namespace CDTU.Utils
 {
-    private static Camera Cam => Camera.main;
-
-    private static Vector2 _lastWorldPos;
-    private static bool _hasLast;
-
     /// <summary>
-    /// 获取鼠标在世界空间的位置（Z=0）
+    /// Converts a caller-provided screen position to a world-space XY plane.
     /// </summary>
-    public static Vector3 GetWorldPosition()
+    public static class MouseHelper2D
     {
-        Vector3 screenPos = Mouse.current.position.ReadValue();
-        screenPos.z = -Cam.transform.position.z;
-
-        Vector3 worldPos = Cam.ScreenToWorldPoint(screenPos);
-        worldPos.z = 0;
-        return worldPos;
-    }
-
-    /// <summary>
-    /// 获取鼠标世界坐标（Vector2 版本）
-    /// </summary>
-    public static Vector2 GetWorldPosition2D()
-    {
-        Vector3 pos = GetWorldPosition();
-        return new Vector2(pos.x, pos.y);
-    }
-
-    /// <summary>
-    /// 从某个世界点指向鼠标的方向（单位向量）
-    /// </summary>
-    public static Vector2 GetDirectionFrom(Vector2 origin)
-    {
-        Vector2 target = GetWorldPosition2D();
-        return (target - origin).normalized;
-    }
-
-    /// <summary>
-    /// 判断鼠标是否在指定世界矩形内
-    /// </summary>
-    public static bool IsMouseInRect(Rect worldRect)
-    {
-        Vector2 mousePos = GetWorldPosition2D();
-        return worldRect.Contains(mousePos);
-    }
-
-    /// <summary>
-    /// 获取鼠标拖拽的世界位移（帧差）
-    /// </summary>
-    public static Vector2 GetDragDelta()
-    {
-        Vector2 current = GetWorldPosition2D();
-
-        if (!_hasLast)
+        public static bool TryGetWorldPosition(
+            Vector2 screenPosition,
+            out Vector2 worldPosition,
+            Camera camera = null,
+            float planeZ = 0f)
         {
-            _lastWorldPos = current;
-            _hasLast = true;
-            return Vector2.zero;
+            if (float.IsNaN(planeZ) || float.IsInfinity(planeZ))
+                throw new System.ArgumentOutOfRangeException(nameof(planeZ));
+
+            camera = camera != null ? camera : Camera.main;
+            if (camera == null)
+            {
+                worldPosition = default;
+                return false;
+            }
+
+            var plane = new Plane(Vector3.forward, new Vector3(0f, 0f, planeZ));
+            var ray = camera.ScreenPointToRay(screenPosition);
+            if (!plane.Raycast(ray, out var distance))
+            {
+                worldPosition = default;
+                return false;
+            }
+
+            var point = ray.GetPoint(distance);
+            worldPosition = new Vector2(point.x, point.y);
+            return true;
         }
 
-        Vector2 delta = current - _lastWorldPos;
-        _lastWorldPos = current;
-        return delta;
+        public static Vector2 GetDirectionFrom(Vector2 origin, Vector2 target)
+        {
+            return (target - origin).normalized;
+        }
+
+        public static bool IsPointInRect(Vector2 worldPosition, Rect worldRect)
+        {
+            return worldRect.Contains(worldPosition);
+        }
     }
 
     /// <summary>
-    /// 重置拖拽状态（如 MouseDown 时调用）
+    /// Explicit drag state that can be owned per pointer or interaction.
     /// </summary>
-    public static void ResetDrag()
+    public sealed class DragTracker2D
     {
-        _hasLast = false;
+        private Vector2 _lastPosition;
+        private bool _hasPosition;
+
+        public Vector2 Update(Vector2 currentPosition)
+        {
+            if (!_hasPosition)
+            {
+                _lastPosition = currentPosition;
+                _hasPosition = true;
+                return Vector2.zero;
+            }
+
+            var delta = currentPosition - _lastPosition;
+            _lastPosition = currentPosition;
+            return delta;
+        }
+
+        public void Reset()
+        {
+            _hasPosition = false;
+        }
     }
 }
-

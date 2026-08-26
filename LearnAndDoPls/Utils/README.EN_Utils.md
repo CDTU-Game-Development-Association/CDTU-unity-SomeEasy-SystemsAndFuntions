@@ -1,169 +1,76 @@
-# Unity Utility Collection
+# CDTU Unity Utils
 
-🌏 English | [中文](README.zh-CN_Utils.md)
+English | [中文](README.zh-CN_Utils.md)
 
-A collection of utility tools developed for Unity projects, providing multiple commonly used utility classes and functions to simplify development processes and improve code quality.
+A small collection of focused Unity runtime utilities without game-specific dependencies. Copy the complete `Utils` directory into your project's `Assets` directory.
 
-## 📚 Modules
+Requires Unity 2022.2 or newer.
 
-### 🎯 Singleton Pattern
+## Modules
 
-Provides a generic singleton base class with features:
+- `BFSUtil<T>`: breadth-first traversal, levels, shortest paths, and filtered searches.
+- `EventBus`: main-thread event dispatch with mutation-safe snapshots and aggregated failures.
+- `CDLogger`: strips regular logs from release builds while preserving warnings and errors.
+- `MouseHelper2D/3D`: converts caller-provided screen positions without choosing an input package.
+- `ObjectPool<T>`: main-thread Unity object pool with warmup, inactive capacity, and lifecycle callbacks.
+- `ReadOnlyAttribute`: read-only Inspector fields.
+- `Singleton<T>`: scene singleton; `SingletonDD<T>` is the persistent convenience variant.
+- `CanvasGroupTween`: dependency-free `CanvasGroup` coroutine fades.
 
-- Automatic instance creation (if none exists)
-- Singleton persistence across scene changes (DontDestroyOnLoad)
-- Prevention of duplicate instantiation
-- Thread safety
-
-Usage example:
+All runtime types use:
 
 ```csharp
-public class GameManager : Singleton<GameManager> {
-    protected override void Awake() {
-        base.Awake();
-        // Your initialization code
-    }
-    
-    public void GameLogic() {
-        // Game logic
-    }
-}
-
-// Usage elsewhere
-GameManager.Instance.GameLogic();
+using CDTU.Utils;
 ```
 
-### 🎮 Object Pool
+## Examples
 
-An efficient object pooling system to reduce runtime instantiation/destruction performance overhead. Features:
-
-- Supports any Unity Object type through generics
-- Automatic object activation state management
-- Supports warm-up and dynamic expansion
-- Built-in safety check mechanisms
-- Optimized memory usage
-- Thread-safe design
-
-Usage example:
+### Graph search
 
 ```csharp
-// Bullet system example
-public class BulletSystem : MonoBehaviour 
+var search = new BFSUtil<int>();
+List<int> path = search.FindShortestPath(start, end, node => graph[node]);
+```
+
+### Events
+
+```csharp
+EventBus.Subscribe<PlayerDied>(OnPlayerDied);
+EventBus.Publish(new PlayerDied());
+EventBus.Unsubscribe<PlayerDied>(OnPlayerDied);
+```
+
+The event bus is intentionally main-thread only.
+
+### Pointer conversion
+
+```csharp
+Vector2 screenPosition = GetPointerPositionFromYourInputSystem();
+if (MouseHelper2D.TryGetWorldPosition(screenPosition, out var worldPosition))
+    transform.position = worldPosition;
+```
+
+### Fades
+
+```csharp
+StartCoroutine(CanvasGroupTween.FadeIn(canvasGroup, 0.2f));
+StartCoroutine(CanvasGroupTween.FadeOut(canvasGroup, 0.2f));
+```
+
+### Singleton
+
+```csharp
+public sealed class GameSession : Singleton<GameSession>
 {
-    [SerializeField] private GameObject bulletPrefab;
-    private ObjectPool<GameObject> bulletPool;
-    
-    private void Awake() 
-    {
-        // Initialize pool with 20 pre-instantiated objects
-        bulletPool = new ObjectPool<GameObject>(bulletPrefab, 20, transform);
-    }
-    
-    public void FireBullet(Vector3 position, Vector3 direction) 
-    {
-        // Get bullet from pool
-        var bullet = bulletPool.Get();
-        bullet.transform.position = position;
-        bullet.transform.forward = direction;
-        
-        // Set recycle timer
-        StartCoroutine(ReturnBulletToPool(bullet, 3f));
-    }
-    
-    private IEnumerator ReturnBulletToPool(GameObject bullet, float delay) 
-    {
-        yield return new WaitForSeconds(delay);
-        bulletPool.Release(bullet);
-    }
-    
-    private void OnDestroy() 
-    {
-        // Clean up pool
-        bulletPool.Clear(true);
-    }
+    protected override bool PersistAcrossScenes => true;
 }
 ```
 
-### 🛠️ Extension Methods
+See [the object pool guide](ObjectPool/README.EN_ObjectPool.md) for pool usage and lifecycle semantics.
 
-Useful extension methods for common Unity types:
+## Boundaries
 
-```csharp
-// Transform extensions
-transform.Reset(); // Reset transform
-transform.SetGlobalScale(Vector3.one); // Set global scale
-
-// GameObject extensions
-gameObject.SetLayerRecursively(LayerMask.NameToLayer("UI")); // Recursive layer setting
-gameObject.SetActiveOptimized(false); // Optimized SetActive call
-
-// Component extensions
-var comp = GetComponentOptimized<T>(); // Cached component access
-```
-
-## 💡 Performance Optimization Best Practices
-
-### Object Pool Usage Guidelines
-
-1. Warm-up Timing
-   - Warm up during level loading
-   - Set initial pool size based on usage statistics
-   - Avoid frequent runtime expansion
-2. Memory Management
-   - Use Clear(true) at appropriate times
-   - Monitor pool size regularly
-   - Set parent transforms for easy debugging
-
-3. Multi-Pool Management
-
-   ```csharp
-   public class ObjectPoolManager : Singleton<ObjectPoolManager> 
-   {
-       private Dictionary<string, ObjectPool<GameObject>> pools = new();
-       
-       public ObjectPool<GameObject> GetPool(string key, GameObject prefab, int defaultSize = 10) 
-       {
-           if (!pools.TryGetValue(key, out var pool)) 
-           {
-               pool = new ObjectPool<GameObject>(prefab, defaultSize, transform);
-               pools.Add(key, pool);
-           }
-           return pool;
-       }
-       
-       public void ClearAll() 
-       {
-           foreach (var pool in pools.Values) 
-           {
-               pool.Clear(true);
-           }
-           pools.Clear();
-       }
-   }
-   ```
-
-## 🔧 Installation
-
-1. Copy the `Utils` folder into your project's `Assets` folder
-2. Add the relevant namespace references:
-
-```csharp
-using Utils;       // Object pool and utilities
-using Utils.Math;  // Math utilities
-using Utils.Debug; // Debug tools
-```
-
-## 📝 Important Notes
-
-1. Object Pool Usage:
-   - Objects must implement proper reset logic
-   - Ensure objects aren't referenced elsewhere before Release
-   - Avoid frequent Get/Release in Update  
-2. Debug Tool Usage:
-   - Enable performance monitoring in development only
-   - Use conditional compilation directives appropriately
-   - Clean up debug logs regularly
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details
+- Unity objects are created, activated, and destroyed only on the main thread.
+- Pointer helpers do not cache a camera or read a global input device.
+- EventBus is an in-process notification tool, not a persistence, networking, or concurrency layer.
+- Utilities do not depend on game-specific types or optional third-party packages.

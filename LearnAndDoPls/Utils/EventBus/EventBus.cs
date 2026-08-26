@@ -1,70 +1,89 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using UnityEngine;
 
-#if UNITASK
-using Cysharp.Threading.Tasks;
-#endif
-
-namespace Core.Events
+namespace CDTU.Utils
 {
+    /// <summary>
+    /// Main-thread event hub. Listener mutations made during Publish affect the next publish.
+    /// </summary>
     public static class EventBus
     {
-        private static readonly Dictionary<Type, HashSet<Delegate>> _listeners = new();
+        private static readonly Dictionary<Type, HashSet<Delegate>> Listeners =
+            new Dictionary<Type, HashSet<Delegate>>();
 
-        public static void Subscribe<TEvent>(Action<TEvent> callback)
+        public static void Subscribe<TEvent>(Action<TEvent> listener)
         {
-            var type = typeof(TEvent);
-            if (!_listeners.TryGetValue(type, out var set))
-                _listeners[type] = set = new HashSet<Delegate>();
-            set.Add(callback);
-        }
+            if (listener == null)
+                throw new ArgumentNullException(nameof(listener));
 
-#if UNITASK
-        public static void Subscribe<TEvent>(Func<TEvent, UniTaskVoid> handler)
-        {
-            var type = typeof(TEvent);
-            if (!_listeners.TryGetValue(type, out var set))
-                _listeners[type] = set = new HashSet<Delegate>();
-            set.Add(handler);
-        }
-#endif
-
-        public static void Publish<T>(T evt)
-        {
-            if (!_listeners.TryGetValue(typeof(T), out var set)) return;
-            foreach (var d in set.ToArray())
+            var eventType = typeof(TEvent);
+            if (!Listeners.TryGetValue(eventType, out var eventListeners))
             {
-#if UNITASK
-                if (d is Func<T, UniTaskVoid> asyncHandler)
+                eventListeners = new HashSet<Delegate>();
+                Listeners.Add(eventType, eventListeners);
+            }
+
+            eventListeners.Add(listener);
+        }
+
+        public static bool Unsubscribe<TEvent>(Action<TEvent> listener)
+        {
+            if (listener == null)
+                return false;
+
+            var eventType = typeof(TEvent);
+            if (!Listeners.TryGetValue(eventType, out var eventListeners))
+                return false;
+
+            var removed = eventListeners.Remove(listener);
+            if (eventListeners.Count == 0)
+                Listeners.Remove(eventType);
+
+            return removed;
+        }
+
+        public static void Publish<TEvent>(TEvent message)
+        {
+            if (!Listeners.TryGetValue(typeof(TEvent), out var eventListeners))
+                return;
+
+            var snapshot = new Delegate[eventListeners.Count];
+            eventListeners.CopyTo(snapshot);
+            List<Exception> failures = null;
+
+            foreach (var listener in snapshot)
+            {
+                try
                 {
-                    asyncHandler(evt).Forget();                   
-                    continue;
+                    ((Action<TEvent>)listener).Invoke(message);
                 }
-#endif
-                if (d is Action<T> Handler)
-                    Handler(evt);
+                catch (Exception exception)
+                {
+                    if (failures == null)
+                        failures = new List<Exception>();
+                    failures.Add(exception);
+                }
             }
+
+            if (failures != null)
+                throw new AggregateException("One or more event listeners failed.", failures);
         }
 
-        public static void Unsubscribe<T>(Action<T> callback)
+        public static void Clear<TEvent>()
         {
-            if (_listeners.TryGetValue(typeof(T), out var set))
-            {
-                set.Remove(callback);
-                if (set.Count == 0) _listeners.Remove(typeof(T));
-            }
+            Listeners.Remove(typeof(TEvent));
         }
 
-#if UNITASK
-        public static void Unsubscribe<T>(Func<T, UniTaskVoid> handler)
+        public static void ClearAll()
         {
-            if (_listeners.TryGetValue(typeof(T), out var set))
-            {
-                set.Remove(handler);
-                if (set.Count == 0) _listeners.Remove(typeof(T));
-            }
+            Listeners.Clear();
         }
-#endif
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetBeforeSceneLoad()
+        {
+            Listeners.Clear();
+        }
     }
 }

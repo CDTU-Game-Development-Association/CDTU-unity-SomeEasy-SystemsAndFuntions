@@ -1,7 +1,9 @@
 {
     "name": "CDTU.Core",
     "rootNamespace": "CDTU.Core",
-    "references": [],
+    "references": [
+        "CDTU.Utils"
+    ],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,

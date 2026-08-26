@@ -1,81 +1,95 @@
 using UnityEngine;
+
 namespace CDTU.Utils
 {
     /// <summary>
-    /// 单例基类
-    /// 继承自 MonoBehaviour，确保场景中只有一个实例
+    /// Lazy MonoBehaviour singleton intended for Unity's main thread.
     /// </summary>
     public abstract class Singleton<T> : MonoBehaviour where T : Singleton<T>
     {
         private static T _instance;
-        private static bool _isQuitting;
 
         public static T Instance
         {
             get
             {
-                if (_isQuitting)
+                if (SingletonRuntimeState.IsQuitting)
                     return null;
-
                 if (_instance != null)
                     return _instance;
 
-                // 场景中查找
-                _instance = FindFirstObjectByType<T>();
-
+                _instance = FindFirstObjectByType<T>(FindObjectsInactive.Include);
                 if (_instance != null)
+                {
+                    _instance.ApplyPersistence();
                     return _instance;
+                }
 
-                // 不存在则创建
-                GameObject go = new GameObject(typeof(T).Name);
-                _instance = go.AddComponent<T>();
-                _instance.OnSingletonCreated();
-
-                return _instance;
+                var singletonObject = new GameObject(typeof(T).Name);
+                return singletonObject.AddComponent<T>();
             }
         }
+
+        public static bool HasInstance => _instance != null;
+
+        protected virtual bool PersistAcrossScenes => false;
 
         protected virtual void Awake()
         {
-            if (_instance == null)
-            {
-                _instance = (T)this;
-                OnSingletonAwake();
-            }
-            else if (_instance != this)
+            if (_instance != null && _instance != this)
             {
                 Destroy(gameObject);
+                return;
             }
+
+            _instance = (T)this;
+            ApplyPersistence();
+            OnSingletonInitialized();
         }
 
-        protected virtual void OnApplicationQuit()
-        {
-            _isQuitting = true;
-        }
-
-        /// <summary>
-        /// Instance 首次创建时调用（仅一次）
-        /// </summary>
-        protected virtual void OnSingletonCreated() { }
-
-        /// <summary>
-        /// Awake 时调用（包括场景内手动放置）
-        /// </summary>
-        protected virtual void OnSingletonAwake() { }
-
-        /// <summary>
-        /// 销毁阶段（解绑事件）
-        /// </summary>
-        protected virtual void OnSingletonDestroyed() { }
         protected virtual void OnDestroy()
         {
-            if (_instance == this)
-            {
-                _instance = null;
-            }
+            if (_instance != this)
+                return;
+
+            _instance = null;
+            OnSingletonDestroyed();
         }
 
+        protected virtual void OnSingletonInitialized()
+        {
+        }
 
+        protected virtual void OnSingletonDestroyed()
+        {
+        }
+
+        private void ApplyPersistence()
+        {
+            if (!PersistAcrossScenes)
+                return;
+
+            if (transform.parent != null)
+                transform.SetParent(null);
+            DontDestroyOnLoad(gameObject);
+        }
     }
 
+    internal static class SingletonRuntimeState
+    {
+        public static bool IsQuitting { get; private set; }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void Initialize()
+        {
+            IsQuitting = false;
+            Application.quitting -= MarkQuitting;
+            Application.quitting += MarkQuitting;
+        }
+
+        private static void MarkQuitting()
+        {
+            IsQuitting = true;
+        }
+    }
 }
